@@ -12,9 +12,10 @@ import (
 // and the log record offset in the **store** file.
 
 const (
-	seqWidth uint64 = 4
-	posWidth uint64 = 8
-	entWidth        = seqWidth + posWidth
+	seqWidth    uint64 = 4
+	posWidth    uint64 = 8
+	entWidth           = seqWidth + posWidth
+	maxMMapSize uint64 = 1024 * 1024 * 1024 * entWidth / 10
 )
 
 type index struct {
@@ -32,8 +33,11 @@ func newIndex(f *os.File) (*index, error) {
 		return nil, err
 	}
 	idx.size = uint64(fi.Size())
+	if idx.size >= uint64(maxMMapSize)-entWidth {
+		return nil, io.EOF
+	}
 
-	err = os.Truncate(f.Name(), 1024*1024*1024)
+	err = f.Truncate(int64(maxMMapSize))
 	if err != nil {
 		return nil, err
 	}
