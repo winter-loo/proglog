@@ -35,7 +35,7 @@ func TestStoreAppendRead(t *testing.T) {
 
 func testAppend(t *testing.T, s *store) {
 	t.Helper()
-	for i := uint64(1); i < loop_count + 1; i++ {
+	for i := uint64(1); i < loop_count+1; i++ {
 		n, pos, err := s.Append(write)
 		require.NoError(t, err)
 		require.Equal(t, n, width)

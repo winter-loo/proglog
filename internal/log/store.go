@@ -11,7 +11,7 @@ type store struct {
 	mu sync.Mutex
 	// GO's simplicity: we do not even write down the field name here
 	*os.File
-	buf *bufio.Writer
+	buf  *bufio.Writer
 	size uint64
 }
 
@@ -29,10 +29,10 @@ func newStore(f *os.File) (*store, error) {
 		return nil, err
 	}
 	size := uint64(fi.Size())
-	return &store {
+	return &store{
 		File: f,
 		size: size,
-		buf: bufio.NewWriter(f),
+		buf:  bufio.NewWriter(f),
 	}, nil
 }
 
