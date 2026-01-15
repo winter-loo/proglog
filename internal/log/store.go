@@ -9,7 +9,8 @@ import (
 
 type store struct {
 	mu sync.Mutex
-	// GO's simplicity: we do not even write down the field name here
+	// In Go, embedding means method promotion.
+	// Any exported methods of *os.File are promoted to store.
 	*os.File
 	buf  *bufio.Writer
 	size uint64
@@ -21,6 +22,7 @@ var (
 
 const (
 	lenWidth = 8
+	maxSize  = 1024 * 1024 * 1024
 )
 
 func newStore(f *os.File) (*store, error) {
@@ -34,6 +36,10 @@ func newStore(f *os.File) (*store, error) {
 		size: size,
 		buf:  bufio.NewWriter(f),
 	}, nil
+}
+
+func (s *store) IsFull() bool {
+	return s.size >= maxSize
 }
 
 // return the number of bytes written, written start position

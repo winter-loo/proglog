@@ -15,7 +15,6 @@ const (
 	seqWidth    uint64 = 4
 	posWidth    uint64 = 8
 	entWidth           = seqWidth + posWidth
-	maxMMapSize uint64 = 1024 * 1024 * 1024 * entWidth / 10
 )
 
 type index struct {
@@ -24,7 +23,7 @@ type index struct {
 	size uint64
 }
 
-func newIndex(f *os.File) (*index, error) {
+func newIndex(f *os.File, config *Config) (*index, error) {
 	idx := &index{
 		file: f,
 	}
@@ -33,11 +32,11 @@ func newIndex(f *os.File) (*index, error) {
 		return nil, err
 	}
 	idx.size = uint64(fi.Size())
-	if idx.size >= uint64(maxMMapSize)-entWidth {
+	if idx.size >= config.Segment.MaxIndexBytes-entWidth {
 		return nil, io.EOF
 	}
 
-	err = f.Truncate(int64(maxMMapSize))
+	err = f.Truncate(int64(config.Segment.MaxIndexBytes))
 	if err != nil {
 		return nil, err
 	}
@@ -47,6 +46,13 @@ func newIndex(f *os.File) (*index, error) {
 		return nil, err
 	}
 	return idx, nil
+}
+
+func (self *index) LastLsn() uint32 {
+	if self.size == 0 {
+		return 0
+	}
+	return uint32(self.size/entWidth) - 1
 }
 
 func (self *index) Read(seq int64) (out uint32, pos uint64, err error) {
@@ -69,7 +75,7 @@ func (self *index) Read(seq int64) (out uint32, pos uint64, err error) {
 
 func (self *index) Write(seq uint32, pos uint64) error {
 	if len(self.mmap) < int(self.size+entWidth) {
-		return nil
+		return io.EOF
 	}
 	endian.PutUint32(self.mmap[self.size:self.size+seqWidth], seq)
 	endian.PutUint64(self.mmap[self.size+seqWidth:self.size+entWidth], pos)

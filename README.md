@@ -28,3 +28,10 @@ curl -X GET localhost:8080 -d '{"offset": 0}'
 cd internal/log/
 go test -v
 ```
+
+
+## chapter 3
+
+```bash
+protoc api/v1/log.proto --go_out=. --go_opt=paths=source_relation --proto_path=.
+```
