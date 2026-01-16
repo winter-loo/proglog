@@ -24,7 +24,7 @@ func TestSegment(t *testing.T) {
 	require.Equal(t, uint64(16), s.nextLsn, s.nextLsn)
 	require.False(t, s.IsFull())
 
-	for i := range 3 {
+	for i := range uint64(3) {
 		off, err := s.Append(want)
 		require.NoError(t, err)
 		require.Equal(t, 16+i, off)

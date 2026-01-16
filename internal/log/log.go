@@ -1,7 +1,6 @@
 package log
 
 import (
-	"fmt"
 	"io"
 	"os"
 	"path"
@@ -106,15 +105,29 @@ func (self *Log) Read(lsn uint64) (record *api.Record, err error) {
 	self.mu.Lock()
 	defer self.mu.Unlock()
 
+	if len(self.segments) == 0 {
+		return nil, api.ErrLsnOutOfRange{Lsn: lsn}
+	}
+
 	i, _ := slices.BinarySearchFunc(self.segments, lsn, func(seg *segment, lsn uint64) int {
-		return int(seg.baseLsn - lsn)
+		if seg.baseLsn < lsn {
+			return -1
+		}
+		if seg.baseLsn > lsn {
+			return 1
+		}
+		return 0
 	})
 
 	if i >= len(self.segments) {
-		return nil, fmt.Errorf("lsn out of range: %d", lsn)
+		i--
 	}
 
-	return self.segments[i].Read(lsn)
+	record, err = self.segments[i].Read(lsn)
+	if err == io.EOF {
+		return nil, api.ErrLsnOutOfRange{Lsn: lsn}
+	}
+	return record, err
 }
 
 func (self *Log) Close() error {
@@ -183,7 +196,7 @@ func (self *Log) Reader() io.Reader {
 
 	readers := make([]io.Reader, len(self.segments))
 	for i, segment := range self.segments {
-	readers[i] = &originReader {segment.store, 0}
+		readers[i] = &originReader{segment.store, 0}
 	}
 	return io.MultiReader(readers...)
 }
@@ -193,7 +206,7 @@ type originReader struct {
 	off int64
 }
 
-func (self *originReader)	Read(p []byte) (n int, err error) {
+func (self *originReader) Read(p []byte) (n int, err error) {
 	n, err = self.ReadAt(p, self.off)
 	self.off += int64(n)
 	return n, err

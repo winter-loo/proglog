@@ -8,3 +8,35 @@ message Record {
   bytes value = 1;
   uint64 offset = 2;
 }
+
+service Log {
+  // a Unary RPC. Send one request and receive one response
+  rpc Produce(ProduceRequest) returns (ProduceResponse) {}
+  rpc Consume(ConsumeRequest) returns (ConsumeResponse) {}
+  // a Streaming RPC. `stream` is a keyword to tell gRPC that the endpoint will
+  // return multiple messages instead of just one.
+  //
+  // Send one request and receive a sequence of messages over time.
+  rpc ConsumeStream(ConsumeRequest) returns (stream ConsumeResponse) {}
+  // a bidirectional streaming RPC where both the client and server send a
+  // sequence of messages using a read-write stream. The two streams operate
+  // independently, so the clients and servers can read and write in whatever
+  // order they like.
+  rpc ProduceStream(stream ProduceRequest) returns (stream ProduceResponse) {}
+}
+
+message ProduceRequest {
+  Record record = 1;
+}
+
+message ProduceResponse {
+  uint64 lsn = 1;
+}
+
+message ConsumeRequest {
+  uint64 lsn = 1;
+}
+
+message ConsumeResponse {
+  Record record = 1;
+}
