@@ -8,9 +8,10 @@ import (
 
 	"github.com/stretchr/testify/require"
 	api "github.com/winter-loo/proglog/api/v1"
+	"github.com/winter-loo/proglog/internal/config"
 	"github.com/winter-loo/proglog/internal/log"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/status"
 )
 
@@ -32,7 +33,7 @@ func TestServer(t *testing.T) {
 	}
 }
 
-func setupTest(t *testing.T, fn func(*Config)) (client api.LogClient, config *Config, teardown func()) {
+func setupTest(t *testing.T, fn func(*Config)) (api.LogClient, *Config, func()) {
 	t.Helper()
 
 	// Capture and unset proxy environment variables to avoid interfering with local gRPC connections
@@ -45,10 +46,16 @@ func setupTest(t *testing.T, fn func(*Config)) (client api.LogClient, config *Co
 		}
 	}
 
-	l, err := net.Listen("tcp", ":0")
+	l, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)
 
-	clientOptions := []grpc.DialOption{grpc.WithTransportCredentials(insecure.NewCredentials())}
+	// https://blog.cloudflare.com/how-to-build-your-own-public-key-infrastructure
+	clientTLSConfig, err := config.SetupTLSConfig(config.TLSConfig{
+		CAFile: config.CAFile,
+	})
+	require.NoError(t, err)
+	clientCreds := credentials.NewTLS(clientTLSConfig)
+	clientOptions := []grpc.DialOption{grpc.WithTransportCredentials(clientCreds)}
 	cc, err := grpc.NewClient(l.Addr().String(), clientOptions...)
 	require.NoError(t, err)
 
@@ -66,14 +73,23 @@ func setupTest(t *testing.T, fn func(*Config)) (client api.LogClient, config *Co
 		fn(cfg)
 	}
 
-	server, err := NewGRPCServer(cfg)
+	serverTlsConfig, err := config.SetupTLSConfig(config.TLSConfig{
+		CAFile:        config.CAFile,
+		CertFile:      config.ServerCertFile,
+		KeyFile:       config.ServerKeyFile,
+		ServerAddress: l.Addr().String(),
+	})
+	require.NoError(t, err)
+	serverCreds := credentials.NewTLS(serverTlsConfig)
+
+	server, err := NewGRPCServer(cfg, grpc.Creds(serverCreds))
 	require.NoError(t, err)
 
 	go func() {
 		server.Serve(l)
 	}()
 
-	client = api.NewLogClient(cc)
+	client := api.NewLogClient(cc)
 	return client, cfg, func() {
 		server.Stop()
 		cc.Close()

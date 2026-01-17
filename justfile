@@ -23,3 +23,36 @@ compile:
     --go-grpc_out=. \
     --go-grpc_opt=paths=source_relative \
     --proto_path=.
+
+[script]
+gencert:
+  #!/usr/bin/env bash
+  export PATH="$PATH:$(go env GOPATH)/bin"
+
+  CONFIG_PATH=${PROGLOG_HOME:-$HOME/.proglog}
+  mkdir -p $CONFIG_PATH
+
+  if test -z $(which cfssl); then
+    echo "Installing cfssl..."
+    go install github.com/cloudflare/cfssl/cmd/cfssl@v1.6.5
+  fi
+
+  if test -z $(which cfssljson); then
+    echo "Installing cfssljson..."
+    go install github.com/cloudflare/cfssl/cmd/cfssljson@v1.6.5
+  fi
+
+  # https://blog.cloudflare.com/how-to-build-your-own-public-key-infrastructure
+  
+  # generate certificate for CA
+  cfssl gencert -initca test/ca-csr.json | cfssljson -bare ca
+
+  # generate certificate for our server
+  cfssl gencert \
+    -ca=ca.pem \
+    -ca-key=ca-key.pem \
+    -config=test/ca-config.json \
+    -profile=server \
+    test/server-csr.json | cfssljson -bare server
+
+  mv *.pem *.csr ${CONFIG_PATH}
