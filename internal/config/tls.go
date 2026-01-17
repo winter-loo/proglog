@@ -15,6 +15,10 @@ type TLSConfig struct {
 	Server        bool
 }
 
+// SetupTLSConfig returns a *tls.Config for the given TLSConfig.
+// It loads certificates and CA files to configure mutual TLS.
+// If Server is true, it configures the server-side TLS, requiring and verifying client certificates.
+// If Server is false, it configures the client-side TLS, using the CA to verify the server.
 // https://blog.cloudflare.com/how-to-build-your-own-public-key-infrastructure
 func SetupTLSConfig(cfg TLSConfig) (*tls.Config, error) {
 	var err error

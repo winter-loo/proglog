@@ -9,6 +9,8 @@ var (
 	CAFile         = configFile("ca.pem")
 	ServerCertFile = configFile("server.pem")
 	ServerKeyFile  = configFile("server-key.pem")
+	ClientCertFile = configFile("client.pem")
+	ClientKeyFile  = configFile("client-key.pem")
 )
 
 // Returns a string path is either `$PROGLOG_HOME/filename` or `$HOME/.proglog/filename`

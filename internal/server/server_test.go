@@ -51,6 +51,9 @@ func setupTest(t *testing.T, fn func(*Config)) (api.LogClient, *Config, func()) 
 
 	// https://blog.cloudflare.com/how-to-build-your-own-public-key-infrastructure
 	clientTLSConfig, err := config.SetupTLSConfig(config.TLSConfig{
+		// mutual TLS authentication
+		CertFile: config.ClientCertFile,
+		KeyFile: config.ClientKeyFile,
 		CAFile: config.CAFile,
 	})
 	require.NoError(t, err)
@@ -78,6 +81,8 @@ func setupTest(t *testing.T, fn func(*Config)) (api.LogClient, *Config, func()) 
 		CertFile:      config.ServerCertFile,
 		KeyFile:       config.ServerKeyFile,
 		ServerAddress: l.Addr().String(),
+		// enable mutual TLS authentication
+		Server: true,
 	})
 	require.NoError(t, err)
 	serverCreds := credentials.NewTLS(serverTlsConfig)
