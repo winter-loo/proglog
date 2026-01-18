@@ -1,5 +1,12 @@
-test:
+export CONFIG_PATH := env_var_or_default('PROGLOG_HOME', env_var('HOME') + '/.proglog')
+
+test: acl-config
   go test -race ./...
+
+acl-config:
+  mkdir -p $CONFIG_PATH
+  cp test/acl-model.conf $CONFIG_PATH/acl-model.conf
+  cp test/acl-policy.csv $CONFIG_PATH/acl-policy.csv
 
 [script]
 compile:
@@ -29,7 +36,6 @@ gencert:
   #!/usr/bin/env bash
   export PATH="$PATH:$(go env GOPATH)/bin"
 
-  CONFIG_PATH=${PROGLOG_HOME:-$HOME/.proglog}
   mkdir -p $CONFIG_PATH
 
   if test -z $(which cfssl); then
@@ -61,6 +67,15 @@ gencert:
     -ca-key=ca-key.pem \
     -config=test/ca-config.json \
     -profile=client \
-    test/client-csr.json | cfssljson -bare client
+    -cn="root" \
+    test/client-csr.json | cfssljson -bare root-client
+
+  cfssl gencert \
+    -ca=ca.pem \
+    -ca-key=ca-key.pem \
+    -config=test/ca-config.json \
+    -profile=client \
+    -cn="nobody" \
+    test/client-csr.json | cfssljson -bare nobody-client
 
   mv *.pem *.csr ${CONFIG_PATH}
