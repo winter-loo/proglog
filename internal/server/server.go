@@ -111,7 +111,7 @@ func InterceptorLogger(l *zap.Logger) logging.Logger {
 func NewGRPCServer(config *Config, opts ...grpc.ServerOption) (*grpc.Server, error) {
 	logger := zap.L().Named("server")
 	loggingOpts := []logging.Option{
-		logging.WithLogOnEvents(logging.StartCall, logging.FinishCall),
+		logging.WithLogOnEvents([]logging.LoggableEvent{}...),
 		logging.WithDurationField(func(duration time.Duration) logging.Fields {
 			return logging.Fields{"grpc.time_ns", duration.Nanoseconds()}
 		}),

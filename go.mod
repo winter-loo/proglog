@@ -3,7 +3,6 @@ module github.com/winter-loo/proglog
 go 1.24.5
 
 require (
-	github.com/casbin/casbin/v2 v2.135.0
 	github.com/gorilla/mux v1.8.1
 	github.com/stretchr/testify v1.11.1
 	github.com/tysonmote/gommap v0.0.3
@@ -14,8 +13,9 @@ require (
 
 require (
 	github.com/armon/go-metrics v0.4.1 // indirect
-	github.com/bmatcuk/doublestar/v4 v4.6.1 // indirect
-	github.com/casbin/govaluate v1.3.0 // indirect
+	github.com/bmatcuk/doublestar/v4 v4.9.2 // indirect
+	github.com/casbin/casbin/v3 v3.9.0 // indirect
+	github.com/casbin/govaluate v1.10.0 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect

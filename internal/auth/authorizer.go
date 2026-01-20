@@ -1,11 +1,13 @@
 package auth
 
 import (
-	"fmt"
-	"github.com/casbin/casbin/v2"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
-)
+		"fmt"
+		// "sync"
+	
+		"github.com/casbin/casbin/v3"
+		"google.golang.org/grpc/codes"
+		"google.golang.org/grpc/status"
+	)
 
 func New(model, policy string) (*Authorizer, error) {
 	enforcer, err := casbin.NewEnforcer(model, policy)
@@ -19,12 +21,15 @@ func New(model, policy string) (*Authorizer, error) {
 
 type Authorizer struct {
 	enforcer *casbin.Enforcer
+	// mu       sync.Mutex
 }
 
 func (a *Authorizer) Authorize(subject, object, action string) error {
-	if err := a.enforcer.LoadPolicy(); err != nil {
-		return status.Errorf(codes.Internal, "failed to load policy: %v", err)
-	}
+	// a.mu.Lock()
+	// defer a.mu.Unlock()
+	// if err := a.enforcer.LoadPolicy(); err != nil {
+	// 	return status.Errorf(codes.Internal, "failed to load policy: %v", err)
+	// }
 	allowed, err := a.enforcer.Enforce(subject, object, action)
 	if err != nil {
 		return status.Errorf(codes.Internal, "failed to enforce policy: %v", err)

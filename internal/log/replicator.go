@@ -2,12 +2,22 @@ package log
 
 import (
 	"context"
+	"io"
+	"strings"
 	"sync"
 
 	api "github.com/winter-loo/proglog/api/v1"
+	"github.com/winter-loo/proglog/internal/config"
+	"github.com/winter-loo/proglog/internal/discovery"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/status"
 )
+
+// make sure Replicator implementing discovery.Handler interface
+var _ discovery.Handler = (*Replicator)(nil)
 
 type Replicator struct {
 	LocalServer api.LogClient
@@ -17,6 +27,8 @@ type Replicator struct {
 
 	mu      sync.Mutex
 	servers map[string]chan struct{}
+	// wg tracks active replication goroutines to ensure they finish before Close returns.
+	wg sync.WaitGroup
 }
 
 // Replicator is built on top of service discovery module(discovery.Membership).
@@ -25,8 +37,18 @@ type Replicator struct {
 // Once pulled a record, it sends this record to current local server. Current
 // local server stores the record.
 func (self *Replicator) replicate(peerAddr string, leave chan struct{}) {
-	dialOpts := make([]grpc.DialOption, 0)
-	cc, err := grpc.NewClient(peerAddr, dialOpts...)
+	clientTLSConfig, err := config.SetupTLSConfig(config.TLSConfig{
+		CAFile:   config.CAFile,
+		CertFile: config.RootClientCertFile,
+		KeyFile:  config.RootClientKeyFile,
+	})
+	if err != nil {
+		self.logError(err, "failed to setup tls config", peerAddr)
+		return
+	}
+	clientCreds := credentials.NewTLS(clientTLSConfig)
+	opts := []grpc.DialOption{grpc.WithTransportCredentials(clientCreds)}
+	cc, err := grpc.NewClient(peerAddr, opts...)
 	if err != nil {
 		self.logError(err, "failed to dial", peerAddr)
 		return
@@ -51,6 +73,11 @@ func (self *Replicator) replicate(peerAddr string, leave chan struct{}) {
 		for {
 			recv, err := logStream.Recv()
 			if err != nil {
+				if err == io.EOF ||
+					status.Code(err) == codes.Canceled ||
+					strings.Contains(err.Error(), "client connection is closing") {
+					return
+				}
 				self.logError(err, "failed to recv", peerAddr)
 				return
 			}
@@ -93,7 +120,13 @@ func (self *Replicator) Join(name, peerAddr string) error {
 
 	self.servers[name] = make(chan struct{})
 
-	go self.replicate(peerAddr, self.servers[name])
+	// Increment WaitGroup before starting the replication goroutine.
+	self.wg.Add(1)
+	go func() {
+		// Decrement WaitGroup when the replication goroutine exits.
+		defer self.wg.Done()
+		self.replicate(peerAddr, self.servers[name])
+	}()
 
 	return nil
 }
@@ -146,7 +179,9 @@ func (self *Replicator) Close() error {
 		return nil
 	}
 	self.closed = true
-
+	// Signal all replication goroutines to stop.
 	close(self.close)
+	// Wait for all replication goroutines to finish their work and exit cleanly.
+	self.wg.Wait()
 	return nil
 }

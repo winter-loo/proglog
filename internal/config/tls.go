@@ -44,9 +44,22 @@ func SetupTLSConfig(cfg TLSConfig) (*tls.Config, error) {
 		}
 
 		if cfg.Server {
+			// Ther server is configured for Mutual TLS
+			//
+			// This tell the server which CAs to use when verifying certificates presented
+			// by incoming clients
 			tlsConfig.ClientCAs = ca
+			// This is the "Mutual" part. It instructs the server to strictly require a
+			// certificate from the client and verify it against the ClientCAs. If the
+			// client doesn't provide a valid certificate signed by your CA, the connection
+			// is rejected.
 			tlsConfig.ClientAuth = tls.RequireAndVerifyClientCert
 		} else {
+			// The client is being configured to verify the server it connects to
+			//
+			// This tells the client which CAs to trust when checking the server's
+			// identity. This ensures the client doesn't connect to a malicious server
+			// with a self-signed or unrecognized certificate.
 			tlsConfig.RootCAs = ca
 		}
 		tlsConfig.ServerName = cfg.ServerAddress
