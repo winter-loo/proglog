@@ -36,21 +36,21 @@ type Replicator struct {
 // When this replicator joins a cluster, it starts pulling records from peers.
 // Once pulled a record, it sends this record to current local server. Current
 // local server stores the record.
-func (self *Replicator) replicate(peerAddr string, leave chan struct{}) {
+func (self *Replicator) replicate(localName string, peerNodeName string, peerRpcAddr string, leave chan struct{}) {
 	clientTLSConfig, err := config.SetupTLSConfig(config.TLSConfig{
 		CAFile:   config.CAFile,
 		CertFile: config.RootClientCertFile,
 		KeyFile:  config.RootClientKeyFile,
 	})
 	if err != nil {
-		self.logError(err, "failed to setup tls config", peerAddr)
+		self.logError(err, "failed to setup tls config", peerRpcAddr)
 		return
 	}
 	clientCreds := credentials.NewTLS(clientTLSConfig)
 	opts := []grpc.DialOption{grpc.WithTransportCredentials(clientCreds)}
-	cc, err := grpc.NewClient(peerAddr, opts...)
+	cc, err := grpc.NewClient(peerRpcAddr, opts...)
 	if err != nil {
-		self.logError(err, "failed to dial", peerAddr)
+		self.logError(err, "failed to dial", peerRpcAddr)
 		return
 	}
 	defer cc.Close()
@@ -63,7 +63,7 @@ func (self *Replicator) replicate(peerAddr string, leave chan struct{}) {
 	ctx := context.Background()
 	logStream, err := client.ConsumeStream(ctx, &api.ConsumeRequest{Lsn: 0})
 	if err != nil {
-		self.logError(err, "failed to consume stream", peerAddr)
+		self.logError(err, "failed to consume stream", peerRpcAddr)
 		return
 	}
 
@@ -78,9 +78,14 @@ func (self *Replicator) replicate(peerAddr string, leave chan struct{}) {
 					strings.Contains(err.Error(), "client connection is closing") {
 					return
 				}
-				self.logError(err, "failed to recv", peerAddr)
+				self.logError(err, "failed to recv", peerRpcAddr)
 				return
 			}
+			self.logger.Debug("pulled log",
+				zap.String("local node", localName),
+				zap.String("from node", peerNodeName),
+				zap.Uint64("lsn", recv.Record.Offset),
+			)
 			recordChan <- recv.Record
 		}
 	}()
@@ -96,14 +101,14 @@ func (self *Replicator) replicate(peerAddr string, leave chan struct{}) {
 				Record: record,
 			})
 			if err != nil {
-				self.logError(err, "failed to produce", peerAddr)
+				self.logError(err, "failed to produce", peerRpcAddr)
 				return
 			}
 		}
 	}
 }
 
-func (self *Replicator) Join(name, peerAddr string) error {
+func (self *Replicator) Join(localName, peerName, peerRpcAddr string) error {
 	self.mu.Lock()
 	defer self.mu.Unlock()
 
@@ -113,19 +118,19 @@ func (self *Replicator) Join(name, peerAddr string) error {
 		return nil
 	}
 
-	if _, ok := self.servers[name]; ok {
-		// already replicating to skip
+	if _, ok := self.servers[peerName]; ok {
+		// already replicating from this newly joining node so to skip
 		return nil
 	}
 
-	self.servers[name] = make(chan struct{})
+	self.servers[peerName] = make(chan struct{})
 
 	// Increment WaitGroup before starting the replication goroutine.
 	self.wg.Add(1)
 	go func() {
 		// Decrement WaitGroup when the replication goroutine exits.
 		defer self.wg.Done()
-		self.replicate(peerAddr, self.servers[name])
+		self.replicate(localName, peerName, peerRpcAddr, self.servers[peerName])
 	}()
 
 	return nil

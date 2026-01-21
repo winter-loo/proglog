@@ -12,6 +12,7 @@ import (
 	api "github.com/winter-loo/proglog/api/v1"
 	"github.com/winter-loo/proglog/internal/agent"
 	"github.com/winter-loo/proglog/internal/config"
+	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 )
@@ -61,6 +62,7 @@ func TestAgent(t *testing.T) {
 			PeerTLSConfig:   peerTLSConfig,
 		})
 		require.NoError(t, err)
+		zap.L().Log(zap.DebugLevel, "agent setup", zap.Int("rpcPort", rpcPort), zap.String("service discovery addr", bindAddr))
 
 		agents = append(agents, agent)
 	}

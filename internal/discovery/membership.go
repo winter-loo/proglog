@@ -24,7 +24,7 @@ type Config struct {
 }
 
 type Handler interface {
-	Join(name, addr string) error
+	Join(localName, peerName, peerRpcAddr string) error
 	Leave(name string) error
 }
 
@@ -124,7 +124,13 @@ func (self *Membership) isLocal(member serf.Member) bool {
 }
 
 func (self *Membership) HandleJoin(member serf.Member) {
-	if err := self.handler.Join(member.Name, member.Tags["rpc_addr"]); err != nil {
+	self.logger.Debug("member join",
+		zap.String("node name", member.Name),
+		zap.String("node addr", member.Addr.String()),
+		zap.String("node rpc addr", member.Tags["rpc_addr"]),
+		zap.Uint16("node port", member.Port),
+	)
+	if err := self.handler.Join(self.serf.LocalMember().Name, member.Name, member.Tags["rpc_addr"]); err != nil {
 		self.logError(err, "failed to join", member)
 	}
 }
