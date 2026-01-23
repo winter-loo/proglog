@@ -71,7 +71,7 @@ type handler struct {
 	leaves chan string
 }
 
-func (h *handler) Join(id, addr string) error {
+func (h *handler) OnJoin(_, id, addr string) error {
 	if h.joins != nil {
 		h.joins <- map[string]string{
 			"id":   id,
@@ -81,7 +81,7 @@ func (h *handler) Join(id, addr string) error {
 	return nil
 }
 
-func (h *handler) Leave(id string) error {
+func (h *handler) OnLeave(id string) error {
 	if h.leaves != nil {
 		h.leaves <- id
 	}

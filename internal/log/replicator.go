@@ -108,7 +108,7 @@ func (self *Replicator) replicate(localName string, peerNodeName string, peerRpc
 	}
 }
 
-func (self *Replicator) Join(localName, peerName, peerRpcAddr string) error {
+func (self *Replicator) OnJoin(localName, peerName, peerRpcAddr string) error {
 	self.mu.Lock()
 	defer self.mu.Unlock()
 
@@ -158,7 +158,7 @@ func (self *Replicator) logError(err error, msg string, addr string) {
 	)
 }
 
-func (self *Replicator) Leave(name string) error {
+func (self *Replicator) OnLeave(name string) error {
 	self.mu.Lock()
 	defer self.mu.Unlock()
 
