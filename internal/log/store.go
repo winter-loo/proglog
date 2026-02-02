@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"os"
 	"sync"
+	"github.com/winter-loo/proglog/internal/errs"
 )
 
 type store struct {
@@ -99,8 +100,8 @@ func (s *store) Close() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if err := s.buf.Flush(); err != nil {
-		return err
+		return errs.Wrap(err)
 	}
 
-	return s.File.Close()
+	return errs.Wrap(s.File.Close())
 }

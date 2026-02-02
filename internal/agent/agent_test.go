@@ -15,6 +15,7 @@ import (
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/status"
 )
 
 func TestAgent(t *testing.T) {
@@ -60,6 +61,7 @@ func TestAgent(t *testing.T) {
 			ACLPolicyFile:   config.ACLPolicyFile,
 			ServerTLSConfig: serverTLSConfig,
 			PeerTLSConfig:   peerTLSConfig,
+			BootStrap:       i == 0,
 		})
 		require.NoError(t, err)
 		zap.L().Log(zap.DebugLevel, "agent setup", zap.Int("rpcPort", rpcPort), zap.String("service discovery addr", bindAddr))
@@ -75,6 +77,7 @@ func TestAgent(t *testing.T) {
 	}()
 	fmt.Println("wait all 3 agents setup...")
 	time.Sleep(3 * time.Second)
+	fmt.Println("all 3 agents setup...DONE")
 
 	leaderClient := client(t, agents[0])
 
@@ -93,6 +96,7 @@ func TestAgent(t *testing.T) {
 
 	fmt.Println("wait for eventual consistency...")
 	time.Sleep(3 * time.Second)
+	fmt.Println("eventual consistency...DONE")
 
 	// for i := 1; i < 3; i++ {
 	followerClient := client(t, agents[1])
@@ -100,6 +104,16 @@ func TestAgent(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, consumed.Record.Value, value)
 	// }
+
+	consumed, err = leaderClient.Consume(
+		context.Background(),
+		&api.ConsumeRequest{Lsn: produceResponse.Lsn + 1},
+	)
+	require.Nil(t, consumed)
+	require.Error(t, err)
+	got := status.Code(err)
+	want := status.Code(api.ErrLsnOutOfRange{}.GRPCStatus().Err())
+	require.Equal(t, got, want)
 }
 
 func client(t *testing.T, agent *agent.Agent) api.LogClient {

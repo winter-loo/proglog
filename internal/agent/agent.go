@@ -1,11 +1,15 @@
 package agent
 
 import (
+	"bytes"
 	"crypto/tls"
 	"fmt"
+	"io"
 	"net"
+	"time"
 
-	api "github.com/winter-loo/proglog/api/v1"
+	"github.com/hashicorp/raft"
+	"github.com/soheilhy/cmux"
 	"github.com/winter-loo/proglog/internal/auth"
 	"github.com/winter-loo/proglog/internal/discovery"
 	"github.com/winter-loo/proglog/internal/errs"
@@ -21,10 +25,10 @@ import (
 type Agent struct {
 	Config
 
-	log        *log.Log
+	mux        cmux.CMux
+	log        *log.DistributedLog
 	server     *grpc.Server
 	membership *discovery.Membership
-	replicator *log.Replicator
 
 	shutdowns chan struct{}
 	shutdown  bool
@@ -40,6 +44,7 @@ type Config struct {
 	StartJoinAddrs  []string
 	ACLModelFile    string
 	ACLPolicyFile   string
+	BootStrap       bool
 }
 
 func (c Config) RPCAddr() (string, error) {
@@ -58,6 +63,7 @@ func New(config Config) (_ *Agent, err error) {
 
 	setup := []func() error{
 		a.setupLogger,
+		a.setupMux,
 		a.setupLog,
 		a.setupServer,
 		a.setupMemberShip,
@@ -68,6 +74,8 @@ func New(config Config) (_ *Agent, err error) {
 			return nil, err
 		}
 	}
+
+	go a.serve()
 	return a, nil
 }
 
@@ -83,12 +91,61 @@ func (self *Agent) setupLogger() error {
 	return nil
 }
 
+func (self *Agent) setupMux() error {
+	rpcAddr := fmt.Sprintf(":%d", self.Config.RPCPort)
+	ln, err := net.Listen("tcp", rpcAddr)
+	if err != nil {
+		return errs.Wrap(err)
+	}
+	self.mux = cmux.New(ln)
+	return nil
+}
+
+// share RPCPort with distributed log's Raft networking
 func (self *Agent) setupLog() error {
 	var err error
-	self.log, err = log.NewLog(
-		self.Config.DataDir,
-		log.Config{},
+
+	// get back the raft connection
+	raftLn := self.mux.Match(func(reader io.Reader) bool {
+		b := make([]byte, 1)
+		if _, err := reader.Read(b); err != nil {
+			return false
+		}
+		return bytes.Equal(b, []byte{byte(log.RaftRPC)})
+	})
+	networking := log.NewStreamLayer(
+		raftLn,
+		self.Config.ServerTLSConfig,
+		self.Config.PeerTLSConfig,
 	)
+
+	config := log.Config{
+		Raft: log.ConfigRaft{
+			Config: raft.Config{
+				LocalID:            raft.ServerID(self.Config.NodeName),
+				HeartbeatTimeout:   50 * time.Millisecond,
+				ElectionTimeout:    50 * time.Millisecond,
+				LeaderLeaseTimeout: 50 * time.Millisecond,
+				CommitTimeout:      5 * time.Millisecond,
+			},
+			StreamLayer: networking,
+			Bootstrap:   self.Config.BootStrap,
+		},
+	}
+
+	self.log, err = log.NewDistributedLog(
+		self.Config.DataDir,
+		config,
+	)
+	if err != nil {
+		return err
+	}
+
+	// TODO: explain
+	if self.Config.BootStrap {
+		err = self.log.WaitForLeader(3 * time.Second)
+	}
+
 	return err
 }
 
@@ -110,18 +167,9 @@ func (self *Agent) setupServer() error {
 	if err != nil {
 		return err
 	}
-	rpcAddr, err := self.RPCAddr()
-	if err != nil {
-		return err
-	}
-
-	ln, err := net.Listen("tcp", rpcAddr)
-	if err != nil {
-		return err
-	}
-
+	grpcLn := self.mux.Match(cmux.Any())
 	go func() {
-		if err := self.server.Serve(ln); err != nil {
+		if err := self.server.Serve(grpcLn); err != nil {
 			_ = self.Shutdown()
 		}
 	}()
@@ -134,19 +182,6 @@ func (self *Agent) setupMemberShip() error {
 		return err
 	}
 
-	clientCreds := credentials.NewTLS(self.Config.PeerTLSConfig)
-	clientOptions := []grpc.DialOption{grpc.WithTransportCredentials(clientCreds)}
-	cc, err := grpc.NewClient(rpcAddr, clientOptions...)
-	if err != nil {
-		return errs.Wrap(err)
-	}
-
-	logClient := api.NewLogClient(cc)
-
-	self.replicator = &log.Replicator{
-		LocalServer: logClient,
-	}
-
 	dConfig := discovery.Config{
 		NodeName: self.Config.NodeName,
 		BindAddr: self.Config.BindAddr,
@@ -156,12 +191,8 @@ func (self *Agent) setupMemberShip() error {
 		StartJoinAddrs: self.Config.StartJoinAddrs,
 	}
 
-	self.membership, err = discovery.New(self.replicator, dConfig)
-	if err != nil {
-		return err
-	}
-
-	return nil
+	self.membership, err = discovery.New(self.log, dConfig)
+	return err
 }
 
 func (self *Agent) Shutdown() error {
@@ -173,7 +204,6 @@ func (self *Agent) Shutdown() error {
 
 	shutdown := []func() error{
 		self.membership.Leave,
-		self.replicator.Close,
 		func() error {
 			self.server.GracefulStop()
 			return nil
@@ -183,6 +213,14 @@ func (self *Agent) Shutdown() error {
 
 	for _, fn := range shutdown {
 		fn()
+	}
+	return nil
+}
+
+func (self *Agent) serve() error {
+	if err := self.mux.Serve(); err != nil {
+		_ = self.Shutdown()
+		return err
 	}
 	return nil
 }
